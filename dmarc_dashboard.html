@@ -1,0 +1,1848 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMARC Monitor</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #131d3d;
+            --bg-tertiary: #1a2847;
+            --text-primary: #e4e6eb;
+            --text-secondary: #a0a9b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --border: #2d3a52;
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* DNS Tools */
+        .dns-result {
+            margin-top: .6rem;
+            padding: .5rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .controls input,
+        .controls select {
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 0.5rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .controls input:focus,
+        .controls select:focus {
+            outline: none;
+            border-color: var(--info);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .controls button {
+            padding: 0.75rem 1.5rem;
+            background: var(--info);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .controls button:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Card */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--info);
+            transform: translateY(-2px);
+        }
+
+        .card-title {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .card-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .card-meta {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Status Indicators */
+        .status-badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.35rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-pass {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .status-fail {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .status-warn {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+
+        /* Chart Container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 1rem;
+        }
+
+        /* Tables */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        thead {
+            background: var(--bg-tertiary);
+            border-bottom: 2px solid var(--border);
+        }
+
+        th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.8rem;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        /* Alert Box */
+        .alert-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid;
+            margin-bottom: 1rem;
+        }
+
+        .alert-critical {
+            background: rgba(239, 68, 68, 0.1);
+            border-left-color: var(--danger);
+        }
+
+        .alert-high {
+            background: rgba(245, 158, 11, 0.1);
+            border-left-color: var(--warning);
+        }
+
+        .alert-medium {
+            background: rgba(59, 130, 246, 0.1);
+            border-left-color: var(--info);
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 3px solid var(--border);
+            border-top-color: var(--info);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-value {
+                font-size: 1.8rem;
+            }
+
+            header h1 {
+                font-size: 1.4rem;
+            }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state h3 {
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            display: block;
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 2px dashed var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--info);
+            background: rgba(59, 130, 246, 0.06);
+        }
+        .upload-zone .upload-title {
+            font-size: 1rem;
+            color: var(--text-primary);
+            margin-bottom: 0.4rem;
+            font-weight: 600;
+        }
+        .upload-zone .upload-hint {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        .upload-zone input[type="file"] { display: none; }
+
+        .upload-results {
+            margin-top: 1rem;
+            display: none;
+            background: var(--bg-tertiary);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border);
+        }
+        .upload-results.show { display: block; }
+        .upload-summary {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .upload-summary strong { color: var(--text-primary); }
+        .upload-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.4rem 0;
+            font-size: 0.85rem;
+            border-bottom: 1px dashed var(--border);
+        }
+        .upload-row:last-child { border-bottom: none; }
+        .upload-row .upload-name {
+            flex: 1;
+            color: var(--text-primary);
+            margin-right: 0.75rem;
+            word-break: break-all;
+        }
+        .upload-row .upload-meta {
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+        }
+        .upload-status {
+            padding: 0.2rem 0.6rem;
+            border-radius: 0.3rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .upload-status.inserted { background: rgba(16,185,129,.15); color: var(--success); border:1px solid var(--success); }
+        .upload-status.duplicate { background: rgba(245,158,11,.15); color: var(--warning); border:1px solid var(--warning); }
+        .upload-status.error { background: rgba(239,68,68,.15); color: var(--danger); border:1px solid var(--danger); }
+
+        /* AI Settings + Interpretation */
+        .ai-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        .ai-section summary {
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-primary);
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ai-section summary::-webkit-details-marker { display: none; }
+        .ai-section summary::after {
+            content: '▾';
+            color: var(--text-secondary);
+            transition: transform 0.2s;
+        }
+        .ai-section[open] summary::after { transform: rotate(180deg); }
+
+        /* Flecha compartida para todos los <details> expandibles */
+        details.expandable > summary { display: flex; align-items: center; justify-content: space-between; list-style: none; }
+        details.expandable > summary::-webkit-details-marker { display: none; }
+        details.expandable > summary::after { content: '▾'; color: var(--text-secondary); transition: transform 0.2s; flex-shrink: 0; }
+        details.expandable[open] > summary::after { transform: rotate(180deg); }
+
+        /* Subsección interna dentro de DNS Tools */
+        .dns-subsection { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .dns-subsection > summary { cursor: pointer; padding: .75rem 1rem; font-weight: 600; font-size: .95rem; color: var(--text-primary); }
+        .dns-subsection-body { padding: 1rem; border-top: 1px solid var(--border); }
+        .ai-section-body {
+            padding: 1rem 1.25rem 1.25rem;
+            border-top: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: 200px 1fr 200px auto;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .ai-section-body label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .ai-section-body select,
+        .ai-section-body input {
+            padding: 0.6rem 0.85rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 0.4rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .ai-section-body select:focus,
+        .ai-section-body input:focus {
+            outline: none;
+            border-color: var(--info);
+        }
+        .ai-section-body button {
+            padding: 0.7rem 1.2rem;
+            background: var(--info);
+            color: white;
+            border: none;
+            border-radius: 0.4rem;
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        .ai-section-body button:hover:not(:disabled) {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        .ai-section-body button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .ai-field { display: flex; flex-direction: column; gap: 0.3rem; }
+
+        .ai-result {
+            margin-top: 1rem;
+            padding: 1rem 1.25rem;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border);
+            display: none;
+        }
+        .ai-result.show { display: block; }
+        .ai-result-header {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .ai-result-content {
+            color: var(--text-primary);
+            font-family: inherit;
+            line-height: 1.6;
+            font-size: 0.92rem;
+        }
+        .ai-result-content h1,
+        .ai-result-content h2,
+        .ai-result-content h3 {
+            margin: 1rem 0 0.5rem;
+            color: var(--text-primary);
+        }
+        .ai-result-content h1 { font-size: 1.2rem; }
+        .ai-result-content h2 { font-size: 1.05rem; color: var(--info); }
+        .ai-result-content h3 { font-size: 0.95rem; }
+        .ai-result-content p { margin-bottom: 0.75rem; }
+        .ai-result-content ul,
+        .ai-result-content ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+        .ai-result-content li { margin-bottom: 0.3rem; }
+        .ai-result-content code {
+            background: rgba(59,130,246,.1);
+            padding: 0.1rem 0.4rem;
+            border-radius: 0.25rem;
+            font-size: 0.85rem;
+        }
+        .ai-result-content strong { color: var(--info); }
+
+        @media (max-width: 768px) {
+            .ai-section-body {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🔐 DMARC Monitor</h1>
+        <p>Real-time email authentication monitoring</p>
+    </header>
+
+    <div class="container">
+        <!-- Upload Zone -->
+        <label for="uploadInput" class="upload-zone" id="uploadZone">
+            <div class="upload-title">📤 Subir reportes DMARC</div>
+            <div class="upload-hint">
+                Arrastrá acá los archivos de Google (.xml, .xml.gz, .zip) o hacé click para seleccionar.
+                Multi-archivo soportado.
+            </div>
+            <input type="file" id="uploadInput" multiple accept=".xml,.gz,.zip">
+        </label>
+        <div class="upload-results" id="uploadResults"></div>
+
+        <!-- AI Settings + Interpretation -->
+        <details class="ai-section" id="aiSection">
+            <summary>🧠 Interpretación con IA</summary>
+            <div class="ai-section-body">
+                <div class="ai-field">
+                    <label>Provider</label>
+                    <select id="aiProvider">
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="openai">OpenAI (GPT-4o)</option>
+                        <option value="gemini">Gemini (Google)</option>
+                    </select>
+                </div>
+                <div class="ai-field">
+                    <label>API Key</label>
+                    <input type="password" id="aiApiKey" placeholder="sk-... · se guarda solo en tu browser">
+                </div>
+                <div class="ai-field">
+                    <label>Modelo</label>
+                    <select id="aiModel"></select>
+                    <small id="aiModelHint" style="color:#8892a4;font-size:11px;margin-top:3px;display:block"></small>
+                </div>
+                <button id="aiRunBtn" type="button">Generar análisis</button>
+            </div>
+            <div class="ai-result" id="aiResult">
+                <div class="ai-result-header" id="aiResultHeader">Resultado</div>
+                <div class="ai-result-content" id="aiResultContent"></div>
+            </div>
+        </details>
+
+        <!-- DNS Tools -->
+        <details id="dnsToolsPanel" class="expandable" style="margin-bottom:1.5rem;">
+            <summary style="cursor:pointer;padding:1rem 1.25rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;font-weight:600;color:var(--text-primary);">
+                <span>🔧 DNS Tools <span style="font-size:.75rem;font-weight:400;color:var(--text-secondary);margin-left:.25rem;">SPF · DKIM · DMARC · MX · PTR</span></span>
+            </summary>
+            <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;padding:1.25rem;background:var(--bg-secondary);display:flex;flex-direction:column;gap:1.25rem;">
+
+                <!-- 📁 Tabla de registros DNS — backup + documentación -->
+                <details class="dns-subsection expandable" id="dnsRecordsPanel">
+                    <summary>📁 Registros DNS documentados</summary>
+                    <div class="dns-subsection-body">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem;">
+                        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+                            <button onclick="showAddRecordForm()" style="padding:.35rem .9rem;background:var(--success);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.8rem;">+ Agregar registro</button>
+                            <div style="position:relative;display:inline-block;" id="exportDnsWrap">
+                                <button onclick="toggleExportMenu()" style="padding:.35rem .9rem;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.8rem;">⬇ Exportar ▾</button>
+                                <div id="exportDnsMenu" style="display:none;position:absolute;right:0;top:110%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;min-width:130px;z-index:50;overflow:hidden;box-shadow:var(--shadow);">
+                                    <button onclick="exportDnsRecords('csv')" style="width:100%;padding:.55rem 1rem;background:none;color:var(--text-primary);border:none;border-bottom:1px solid var(--border);cursor:pointer;font-size:.82rem;text-align:left;">📄 CSV</button>
+                                    <button onclick="exportDnsRecords('xlsx')" style="width:100%;padding:.55rem 1rem;background:none;color:var(--text-primary);border:none;cursor:pointer;font-size:.82rem;text-align:left;">📊 Excel (.xlsx)</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Formulario inline para agregar/editar -->
+                    <div id="recordForm" style="display:none;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:.75rem;">
+                        <div style="display:grid;grid-template-columns:100px 1fr 1fr 80px;gap:.5rem;margin-bottom:.5rem;">
+                            <div>
+                                <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Tipo</label>
+                                <select id="recType" style="width:100%;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;">
+                                    <option>TXT</option><option>MX</option><option>A</option><option>CNAME</option><option>AAAA</option><option>NS</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Host</label>
+                                <input id="recHost" type="text" placeholder="@ _dmarc send resend._domainkey" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;">
+                            </div>
+                            <div style="grid-column:span 1">
+                                <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">TTL</label>
+                                <input id="recTtl" type="text" placeholder="Automatic" value="Automatic" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;">
+                            </div>
+                            <div style="display:flex;align-items:flex-end;gap:.3rem;">
+                                <button onclick="saveRecord()" style="padding:.4rem .7rem;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer;font-size:.78rem;white-space:nowrap;">Guardar</button>
+                                <button onclick="cancelRecord()" style="padding:.4rem .6rem;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:.78rem;">✕</button>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:.5rem;">
+                            <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Valor</label>
+                            <textarea id="recValue" rows="2" placeholder="v=spf1 include:… o feedback-smtp.sa-east-1.amazonses.com." style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;resize:vertical;"></textarea>
+                        </div>
+                        <div>
+                            <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Notas / propósito</label>
+                            <input id="recNotes" type="text" placeholder="Ej: Autoriza Amazon SES como envelope sender de Resend" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;">
+                        </div>
+                        <input id="recEditId" type="hidden" value="">
+                    </div>
+
+                    <!-- Tabla de registros -->
+                    <div style="overflow-x:auto;">
+                        <table id="dnsRecordsTable" style="width:100%;border-collapse:collapse;font-size:.82rem;">
+                            <thead>
+                                <tr style="border-bottom:2px solid var(--border);color:var(--text-secondary);text-align:left;">
+                                    <th style="padding:6px 8px;width:60px">Tipo</th>
+                                    <th style="padding:6px 8px;width:140px">Host</th>
+                                    <th style="padding:6px 8px">Valor</th>
+                                    <th style="padding:6px 8px;width:200px">Notas</th>
+                                    <th style="padding:6px 8px;width:70px"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="dnsRecordsBody">
+                                <tr><td colspan="5" style="text-align:center;padding:1rem;color:var(--text-secondary)">Cargando…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                </details>
+
+                <!-- ⚙️ Setup del dominio -->
+                <details class="dns-subsection expandable" id="dnsSetupPanel">
+                    <summary>⚙️ Configuración del dominio</summary>
+                    <div class="dns-subsection-body">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;" id="dnsSetupForm">
+                        <div>
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Dominio</label>
+                            <input id="setupDomain" type="text" placeholder="yourdomain.com" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                        </div>
+                        <div>
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Proveedor DNS</label>
+                            <select id="setupDnsProvider" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                                <option value="">Seleccionar…</option>
+                                <option value="Namecheap">Namecheap</option>
+                                <option value="Cloudflare">Cloudflare</option>
+                                <option value="Route53">AWS Route 53</option>
+                                <option value="GoDaddy">GoDaddy</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Stack de email</label>
+                            <select id="setupEmailStack" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                                <option value="">Seleccionar…</option>
+                                <option value="Resend+SES">Resend + Amazon SES</option>
+                                <option value="Google Workspace">Google Workspace</option>
+                                <option value="SendGrid">SendGrid</option>
+                                <option value="Postfix">Postfix propio</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Selectores DKIM (separados por coma)</label>
+                            <input id="setupDkimSelectors" type="text" placeholder="resend, google" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                        </div>
+                        <div style="grid-column:1/-1">
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Registro SPF actual</label>
+                            <input id="setupSpf" type="text" placeholder="v=spf1 include:amazonses.com ~all" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;font-family:monospace;">
+                        </div>
+                        <div style="grid-column:1/-1">
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Registro DMARC actual</label>
+                            <input id="setupDmarc" type="text" placeholder="v=DMARC1; p=quarantine; rua=mailto:…" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;font-family:monospace;">
+                        </div>
+                        <div style="grid-column:1/-1">
+                            <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Notas adicionales</label>
+                            <textarea id="setupNotes" rows="2" placeholder="Ej: send.yourdomain.com es el envelope sender de Resend, pendiente agregar SPF en ese subdominio…" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;resize:vertical;"></textarea>
+                        </div>
+                        <div style="grid-column:1/-1;display:flex;align-items:center;gap:1rem;">
+                            <button onclick="saveDnsSetup()" style="padding:.5rem 1.25rem;background:var(--info);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">💾 Guardar configuración</button>
+                            <span id="setupSaveStatus" style="font-size:.8rem;color:var(--text-secondary)"></span>
+                        </div>
+                    </div>
+                    </div>
+                </details>
+
+                <!-- 🔍 Tabla IPs + PTR -->
+                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem;">
+                        <span style="font-weight:600;font-size:.95rem;color:var(--text-primary)">🔍 IPs origen + Reverse DNS</span>
+                        <button onclick="loadIpPtr()" style="padding:.35rem .9rem;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.8rem;">Analizar IPs</button>
+                    </div>
+                    <div id="ipPtrContainer" style="display:none;overflow-x:auto;">
+                        <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border);color:var(--text-secondary);text-align:left;">
+                                    <th style="padding:6px 10px">IP origen</th>
+                                    <th style="padding:6px 10px;text-align:center">Emails</th>
+                                    <th style="padding:6px 10px">PTR (hostname)</th>
+                                    <th style="padding:6px 10px;text-align:center">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ipPtrBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 🧠 Análisis con IA -->
+                <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                    <div style="font-weight:600;font-size:.95rem;color:var(--text-primary);margin-bottom:.75rem;">🧠 Análisis técnico con IA</div>
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">
+                        <div>
+                            <label style="font-size:.75rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Provider</label>
+                            <select id="dnsAiProvider" onchange="loadDnsAiKey()" style="padding:.45rem .7rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                                <option value="gemini">Gemini</option>
+                                <option value="claude">Claude</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:200px;">
+                            <label style="font-size:.75rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">API Key</label>
+                            <input id="dnsAiKey" type="password" placeholder="Pegar API key…" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                        </div>
+                        <button onclick="runDnsAnalyze()" style="padding:.45rem 1.25rem;background:var(--info);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">Generar análisis</button>
+                    </div>
+                    <div id="dnsAiResult" style="display:none;margin-top:.75rem;padding:.75rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:.85rem;line-height:1.6;"></div>
+                </div>
+
+                <!-- 🔎 Consultas DNS individuales (colapsable) -->
+                <details class="dns-subsection expandable">
+                    <summary style="color:var(--text-secondary);">
+                        <span>🔎 Consultas DNS individuales <span style="font-size:.75rem;font-weight:400">SPF · DKIM · DMARC · MX · PTR</span></span>
+                    </summary>
+                    <div style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.75rem;background:var(--bg-primary);">
+
+                    <!-- SPF -->
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                        <div style="font-weight:600;margin-bottom:.75rem;color:var(--info)">📋 SPF Check</div>
+                        <div style="display:flex;gap:.5rem;">
+                            <input id="spfDomain" type="text" placeholder="yourdomain.com" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <button onclick="runDns('spf')" style="padding:.5rem 1rem;background:var(--info);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">Consultar</button>
+                        </div>
+                        <div id="spfResult" class="dns-result" style="display:none;"></div>
+                    </div>
+
+                    <!-- DKIM -->
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                        <div style="font-weight:600;margin-bottom:.75rem;color:var(--success)">🔑 DKIM Check</div>
+                        <div style="display:flex;gap:.5rem;margin-bottom:.5rem;">
+                            <input id="dkimSelector" type="text" placeholder="selector (ej: resend)" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                        </div>
+                        <div style="display:flex;gap:.5rem;">
+                            <input id="dkimDomain" type="text" placeholder="yourdomain.com" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <button onclick="runDns('dkim')" style="padding:.5rem 1rem;background:var(--success);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">Consultar</button>
+                        </div>
+                        <div id="dkimResult" class="dns-result" style="display:none;"></div>
+                    </div>
+
+                    <!-- DMARC -->
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                        <div style="font-weight:600;margin-bottom:.75rem;color:var(--warning)">🛡️ DMARC Check</div>
+                        <div style="display:flex;gap:.5rem;">
+                            <input id="dmarcDomain" type="text" placeholder="yourdomain.com" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <button onclick="runDns('dmarc')" style="padding:.5rem 1rem;background:var(--warning);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">Consultar</button>
+                        </div>
+                        <div id="dmarcResult" class="dns-result" style="display:none;"></div>
+                    </div>
+
+                    <!-- MX -->
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                        <div style="font-weight:600;margin-bottom:.75rem;color:var(--text-primary)">📬 MX Lookup</div>
+                        <div style="display:flex;gap:.5rem;">
+                            <input id="mxDomain" type="text" placeholder="yourdomain.com" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <button onclick="runDns('mx')" style="padding:.5rem 1rem;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.85rem;">Consultar</button>
+                        </div>
+                        <div id="mxResult" class="dns-result" style="display:none;"></div>
+                    </div>
+
+                    <!-- PTR manual -->
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+                        <div style="font-weight:600;margin-bottom:.75rem;color:var(--text-secondary)">🔍 Reverse DNS (PTR)</div>
+                        <div style="display:flex;gap:.5rem;">
+                            <input id="ptrIp" type="text" placeholder="23.249.215.56" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <button onclick="runDns('ptr')" style="padding:.5rem 1rem;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.85rem;">Consultar</button>
+                        </div>
+                        <div id="ptrResult" class="dns-result" style="display:none;"></div>
+                    </div>
+
+                    </div>
+                </details>
+
+            </div>
+        </details>
+
+        <!-- Controls -->
+        <div class="controls">
+            <input 
+                type="text" 
+                id="domainFilter" 
+                placeholder="Filtrar por dominio (ej: yourdomain.com)"
+            >
+            <select id="daysFilter">
+                <option value="7">Últimos 7 días</option>
+                <option value="14">Últimos 14 días</option>
+                <option value="30">Últimos 30 días</option>
+            </select>
+            <button onclick="loadData()">🔄 Actualizar</button>
+            <button onclick="openHistoryModal()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);">📋 Historial</button>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">Total Emails</div>
+                <div class="card-value" id="totalEmails">—</div>
+                <div class="card-meta" id="dataPeriod">En el período seleccionado</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">SPF Pass Rate</div>
+                <div class="card-value" id="spfPassRate">—</div>
+                <div class="card-meta" id="spfStats"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">DKIM Pass Rate</div>
+                <div class="card-value" id="dkimPassRate">—</div>
+                <div class="card-meta" id="dkimStats"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Active Alerts</div>
+                <div class="card-value" id="alertCount">—</div>
+                <div class="card-meta" id="alertSeverity"></div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
+            <div class="card">
+                <div class="card-title">SPF Results Distribution</div>
+                <div class="chart-container">
+                    <canvas id="spfChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">DKIM Results Distribution</div>
+                <div class="chart-container">
+                    <canvas id="dkimChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Section -->
+        <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">🚨 Active Alerts</div>
+            <div id="alertsList">
+                <div class="empty-state">
+                    <h3>No alerts</h3>
+                    <p>All systems operational</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Reports -->
+        <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Recent Reports</div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Date</th>
+                            <th>Emails</th>
+                            <th>SPF</th>
+                            <th>DKIM</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsTable">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary);">
+                                Cargando datos...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== CONFIG ==========
+        // Cambiar esta URL si tienes un servidor backend
+        const API_URL = 'http://localhost:5000/api';
+        
+        let spfChart = null;
+        let dkimChart = null;
+
+        // ========== DATA LOADING ==========
+        async function loadData() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const days = document.getElementById('daysFilter').value;
+
+            try {
+                // Simulación de datos (reemplazar con fetch real)
+                const data = await fetchSummary(domain, days);
+                
+                if (data.error) {
+                    showEmptyState();
+                    return;
+                }
+
+                updateCards(data);
+                updateCharts(data);
+                loadAlerts(domain);
+                loadReports(domain);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showEmptyState();
+            }
+        }
+
+        async function fetchSummary(domain, days) {
+            try {
+                // Intenta fetch real primero
+                const response = await fetch(`${API_URL}/summary?domain=${domain}&days=${days}`);
+                if (!response.ok) throw new Error('API not available');
+                return await response.json();
+            } catch (error) {
+                console.log('Using demo data...');
+                return getDemoData();
+            }
+        }
+
+        async function loadAlerts(domain) {
+            try {
+                const response = await fetch(`${API_URL}/alerts?domain=${domain}`);
+                const alerts = response.ok ? await response.json() : getDemoAlerts();
+                
+                const alertsList = document.getElementById('alertsList');
+                
+                if (alerts.length === 0) {
+                    alertsList.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No alerts</h3>
+                            <p>All systems operational</p>
+                        </div>
+                    `;
+                    document.getElementById('alertCount').textContent = '0';
+                    return;
+                }
+
+                document.getElementById('alertCount').textContent = alerts.length;
+                
+                alertsList.innerHTML = alerts.map(alert => {
+                    const reportPeriod = alert.report_date_begin
+                        ? `Reporte del ${fmtDate(alert.report_date_begin)} al ${fmtDate(alert.report_date_end)}`
+                        : new Date(alert.created_at).toLocaleString('es-AR');
+                    return `
+                    <div class="alert-box alert-${alert.severity}">
+                        <strong>[${alert.severity.toUpperCase()}]</strong>
+                        ${alert.alert_type}: ${alert.message}
+                        <br>
+                        <small style="color: var(--text-secondary);">
+                            ${reportPeriod} · IP: ${alert.source_ip || '—'}
+                        </small>
+                    </div>
+                `; }).join('');
+            } catch (error) {
+                console.error('Error loading alerts:', error);
+            }
+        }
+
+        async function loadReports(domain) {
+            try {
+                const response = await fetch(`${API_URL}/reports?domain=${domain}&limit=10`);
+                const reports = response.ok ? await response.json() : getDemoReports();
+                
+                const tbody = document.getElementById('reportsTable');
+                
+                if (reports.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary);">
+                                No reports found
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = reports.map(report => {
+                    const date = new Date(report.date_begin * 1000);
+                    const spfStatus = report.spf_result === 'pass' ? 'status-pass' : 'status-fail';
+                    const dkimStatus = report.dkim_result === 'pass' ? 'status-pass' : 'status-fail';
+                    
+                    return `
+                        <tr>
+                            <td>${report.domain}</td>
+                            <td>${date.toLocaleDateString('es-AR')}</td>
+                            <td>${report.count}</td>
+                            <td><span class="status-badge ${spfStatus}">${report.spf_result.toUpperCase()}</span></td>
+                            <td><span class="status-badge ${dkimStatus}">${report.dkim_result.toUpperCase()}</span></td>
+                            <td>
+                                <span class="status-badge status-${report.disposition === 'none' ? 'pass' : 'warn'}">
+                                    ${report.disposition.toUpperCase()}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading reports:', error);
+            }
+        }
+
+        // ========== UI UPDATES ==========
+        function fmtDate(unixSec) {
+            if (!unixSec) return '?';
+            return new Date(unixSec * 1000).toLocaleDateString('es-AR', {
+                day: '2-digit', month: 'short', year: 'numeric'
+            });
+        }
+
+        function updateCards(data) {
+            const total = data.total_emails || 0;
+            const spfPass = data.spf?.pass_pct || 0;
+            const dkimPass = data.dkim?.pass_pct || 0;
+
+            document.getElementById('totalEmails').textContent = total.toLocaleString();
+            document.getElementById('spfPassRate').textContent = `${spfPass}%`;
+            document.getElementById('dkimPassRate').textContent = `${dkimPass}%`;
+
+            document.getElementById('spfStats').innerHTML =
+                `✅ ${data.spf?.pass || 0} | ❌ ${data.spf?.fail || 0}`;
+            document.getElementById('dkimStats').innerHTML =
+                `✅ ${data.dkim?.pass || 0} | ❌ ${data.dkim?.fail || 0}`;
+
+            const periodEl = document.getElementById('dataPeriod');
+            if (data.date_from && data.date_to) {
+                periodEl.textContent = `Reportes del ${fmtDate(data.date_from)} al ${fmtDate(data.date_to)}`;
+            } else {
+                periodEl.textContent = 'En el período seleccionado';
+            }
+        }
+
+        function updateCharts(data) {
+            // SPF Chart
+            const spfCtx = document.getElementById('spfChart').getContext('2d');
+            if (spfChart) spfChart.destroy();
+            
+            spfChart = new Chart(spfCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Pass', 'Fail'],
+                    datasets: [{
+                        data: [data.spf?.pass || 0, data.spf?.fail || 0],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderColor: '#131d3d',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#e4e6eb' } }
+                    }
+                }
+            });
+
+            // DKIM Chart
+            const dkimCtx = document.getElementById('dkimChart').getContext('2d');
+            if (dkimChart) dkimChart.destroy();
+            
+            dkimChart = new Chart(dkimCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Pass', 'Fail'],
+                    datasets: [{
+                        data: [data.dkim?.pass || 0, data.dkim?.fail || 0],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderColor: '#131d3d',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#e4e6eb' } }
+                    }
+                }
+            });
+        }
+
+        function showEmptyState() {
+            document.getElementById('totalEmails').textContent = '—';
+            document.getElementById('spfPassRate').textContent = '—';
+            document.getElementById('dkimPassRate').textContent = '—';
+        }
+
+        // ========== DEMO DATA ==========
+        function getDemoData() {
+            return {
+                domain: 'yourdomain.com',
+                total_reports: 7,
+                total_emails: 245,
+                spf: {
+                    pass: 240,
+                    fail: 5,
+                    pass_pct: 97.96,
+                    fail_pct: 2.04
+                },
+                dkim: {
+                    pass: 245,
+                    fail: 0,
+                    pass_pct: 100,
+                    fail_pct: 0
+                }
+            };
+        }
+
+        function getDemoAlerts() {
+            return [
+                {
+                    id: 1,
+                    alert_type: 'spf_failure',
+                    severity: 'high',
+                    message: 'SPF failed para send.yourdomain.com',
+                    created_at: new Date().toISOString()
+                }
+            ];
+        }
+
+        function getDemoReports() {
+            return [
+                {
+                    domain: 'yourdomain.com',
+                    date_begin: Math.floor(Date.now() / 1000) - 86400,
+                    count: 35,
+                    spf_result: 'pass',
+                    dkim_result: 'pass',
+                    disposition: 'none'
+                },
+                {
+                    domain: 'yourdomain.com',
+                    date_begin: Math.floor(Date.now() / 1000) - 172800,
+                    count: 28,
+                    spf_result: 'pass',
+                    dkim_result: 'pass',
+                    disposition: 'none'
+                }
+            ];
+        }
+
+        // ========== UPLOAD ==========
+        function bytes(n) {
+            if (n < 1024) return `${n}B`;
+            if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+            return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+        }
+
+        async function uploadFiles(fileList) {
+            const files = Array.from(fileList);
+            if (!files.length) return;
+
+            const results = document.getElementById('uploadResults');
+            results.classList.add('show');
+            results.innerHTML = `<div class="upload-summary">⏳ Subiendo ${files.length} archivo(s) (${bytes(files.reduce((s, f) => s + f.size, 0))})...</div>`;
+
+            const fd = new FormData();
+            files.forEach(f => fd.append('files', f));
+
+            try {
+                const res = await fetch(`${API_URL}/upload-report`, {
+                    method: 'POST',
+                    body: fd,
+                });
+                const json = await res.json();
+
+                if (!res.ok) {
+                    results.innerHTML = `<div class="upload-summary"><span style="color: var(--danger);">❌ ${json.error || 'Error en la subida'}</span></div>`;
+                    return;
+                }
+
+                const s = json.summary || {};
+                const rows = (json.results || []).map(r => {
+                    const meta = r.status === 'inserted'
+                        ? `${r.records_inserted} record(s) · ${r.alerts_generated} alerta(s) · ${r.domain || ''}`
+                        : r.status === 'duplicate'
+                        ? `Ya estaba en BD (report db_id ${r.report_id})`
+                        : (r.error || '');
+                    return `
+                        <div class="upload-row">
+                            <div>
+                                <div class="upload-name">${r.filename}</div>
+                                <div class="upload-meta">${meta}</div>
+                            </div>
+                            <span class="upload-status ${r.status}">${r.status}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                results.innerHTML = `
+                    <div class="upload-summary">
+                        ✅ Procesados <strong>${s.processed || 0}</strong> ·
+                        Insertados <strong>${s.inserted || 0}</strong> ·
+                        Duplicados <strong>${s.duplicates || 0}</strong> ·
+                        Errores <strong>${s.errors || 0}</strong>
+                    </div>
+                    ${rows}
+                `;
+
+                // Refrescar dashboard si entró algo nuevo
+                if ((s.inserted || 0) > 0) {
+                    loadData();
+                }
+            } catch (err) {
+                results.innerHTML = `<div class="upload-summary"><span style="color: var(--danger);">❌ ${err.message}</span></div>`;
+            }
+        }
+
+        function setupUpload() {
+            const zone = document.getElementById('uploadZone');
+            const input = document.getElementById('uploadInput');
+
+            input.addEventListener('change', (e) => {
+                uploadFiles(e.target.files);
+                input.value = ''; // permite re-subir mismo archivo
+            });
+
+            ['dragenter', 'dragover'].forEach(evt => {
+                zone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    zone.classList.add('dragover');
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                zone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    zone.classList.remove('dragover');
+                });
+            });
+            zone.addEventListener('drop', (e) => {
+                if (e.dataTransfer && e.dataTransfer.files) {
+                    uploadFiles(e.dataTransfer.files);
+                }
+            });
+        }
+
+        // ========== AI INTERPRETATION ==========
+        const AI_MODELS = {
+            claude: [
+                { id: 'claude-haiku-4-5',  label: 'Haiku — rápido y barato' },
+                { id: 'claude-sonnet-4-6', label: 'Sonnet — balance (recomendado)' },
+                { id: 'claude-opus-4-7',   label: 'Opus — máxima capacidad' },
+            ],
+            openai: [
+                { id: 'gpt-4o-mini',  label: 'GPT-4o mini — rápido y barato' },
+                { id: 'gpt-4o',       label: 'GPT-4o — balance (recomendado)' },
+                { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
+            ],
+            gemini: [
+                { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash — rápido (recomendado)' },
+                { id: 'gemini-2.5-pro',   label: 'Gemini 2.5 Pro — máxima capacidad' },
+                { id: 'gemini-2.0-flash-001', label: 'Gemini 2.0 Flash 001 — estable' },
+            ],
+        };
+        const AI_DEFAULT_MODELS = {
+            claude: 'claude-sonnet-4-6',
+            openai: 'gpt-4o',
+            gemini: 'gemini-2.5-flash',
+        };
+        const AI_STORAGE_KEY = 'dmarc_ai_settings';
+
+        function populateAiModelsFallback(provider, preselect) {
+            const select = document.getElementById('aiModel');
+            const opts = AI_MODELS[provider] || [];
+            const wanted = preselect || AI_DEFAULT_MODELS[provider];
+            select.innerHTML = opts.map(o =>
+                `<option value="${o.id}"${o.id === wanted ? ' selected' : ''}>${o.label}</option>`
+            ).join('');
+            document.getElementById('aiModelHint').textContent = '';
+        }
+
+        async function fetchAndPopulateModels(provider, apiKey, preselect) {
+            const select = document.getElementById('aiModel');
+            const hint = document.getElementById('aiModelHint');
+            if (!apiKey) {
+                populateAiModelsFallback(provider, preselect);
+                hint.textContent = 'Ingresá una API key para cargar modelos del provider';
+                return;
+            }
+            const prevVal = select.value;
+            select.innerHTML = '<option disabled selected>Cargando modelos…</option>';
+            hint.textContent = '';
+            try {
+                const res = await fetch(`${API_URL}/models`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider, api_key: apiKey }),
+                });
+                const json = await res.json();
+                if (!res.ok || !json.models || json.models.length === 0) {
+                    populateAiModelsFallback(provider, preselect || prevVal);
+                    hint.textContent = `⚠️ No se pudieron cargar modelos: ${json.error || 'sin datos'}. Usando lista estática.`;
+                    return;
+                }
+                const wanted = preselect || prevVal || AI_DEFAULT_MODELS[provider];
+                select.innerHTML = json.models.map(o =>
+                    `<option value="${o.id}"${o.id === wanted ? ' selected' : ''}>${o.label}</option>`
+                ).join('');
+                hint.textContent = `${json.models.length} modelos cargados desde ${provider}`;
+            } catch (err) {
+                populateAiModelsFallback(provider, preselect || prevVal);
+                hint.textContent = '⚠️ Error de red al cargar modelos. Usando lista estática.';
+            }
+        }
+
+        function loadAiSettings() {
+            try {
+                const raw = localStorage.getItem(AI_STORAGE_KEY);
+                const s = raw ? JSON.parse(raw) : null;
+                if (s && s.provider) document.getElementById('aiProvider').value = s.provider;
+                const provider = document.getElementById('aiProvider').value;
+                const savedModel = s && s.models && s.models[provider];
+                const savedKey = s && s.keys && s.keys[provider];
+                if (savedKey) document.getElementById('aiApiKey').value = savedKey;
+                // Intenta fetch dinámico; si no hay key usa fallback
+                fetchAndPopulateModels(provider, savedKey || '', savedModel);
+            } catch (e) {
+                console.warn('No se pudieron cargar settings IA:', e);
+                populateAiModelsFallback(document.getElementById('aiProvider').value);
+            }
+        }
+
+        function saveAiSettings() {
+            const provider = document.getElementById('aiProvider').value;
+            const apiKey = document.getElementById('aiApiKey').value.trim();
+            const model = document.getElementById('aiModel').value.trim();
+            const raw = localStorage.getItem(AI_STORAGE_KEY);
+            const s = raw ? JSON.parse(raw) : { provider, keys: {}, models: {} };
+            s.provider = provider;
+            s.keys = s.keys || {};
+            s.models = s.models || {};
+            if (apiKey) s.keys[provider] = apiKey;
+            if (model) s.models[provider] = model;
+            localStorage.setItem(AI_STORAGE_KEY, JSON.stringify(s));
+        }
+
+        async function runInterpretation() {
+            const btn = document.getElementById('aiRunBtn');
+            const result = document.getElementById('aiResult');
+            const header = document.getElementById('aiResultHeader');
+            const content = document.getElementById('aiResultContent');
+
+            const provider = document.getElementById('aiProvider').value;
+            const apiKey = document.getElementById('aiApiKey').value.trim();
+            const model = document.getElementById('aiModel').value.trim()
+                || AI_DEFAULT_MODELS[provider];
+            const domain = document.getElementById('domainFilter').value.trim() || 'yourdomain.com';
+            const days = parseInt(document.getElementById('daysFilter').value, 10);
+
+            if (!apiKey) {
+                result.classList.add('show');
+                header.textContent = '⚠️ Falta API key';
+                content.innerHTML = '<p>Pegá tu API key del provider seleccionado y volvé a intentar.</p>';
+                return;
+            }
+
+            saveAiSettings();
+            btn.disabled = true;
+            btn.textContent = 'Analizando...';
+            result.classList.add('show');
+            header.textContent = `⏳ Pidiéndole a ${provider} (${model})...`;
+            content.innerHTML = '';
+
+            try {
+                const res = await fetch(`${API_URL}/interpret`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider, api_key: apiKey, model, domain, days,
+                    }),
+                });
+                const json = await res.json();
+
+                if (!res.ok) {
+                    header.textContent = `❌ Error (${res.status})`;
+                    content.innerHTML = `<pre>${json.error || 'Error desconocido'}</pre>`;
+                    return;
+                }
+
+                header.textContent = `✅ ${json.provider} · ${json.model}`
+                    + (json.tokens_used ? ` · ${json.tokens_used} tokens` : '');
+                content.innerHTML = window.marked
+                    ? marked.parse(json.response || '')
+                    : `<pre>${json.response || ''}</pre>`;
+            } catch (err) {
+                header.textContent = '❌ Error de red';
+                content.innerHTML = `<pre>${err.message}</pre>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generar análisis';
+            }
+        }
+
+        function setupAi() {
+            document.getElementById('aiProvider').addEventListener('change', () => {
+                const p = document.getElementById('aiProvider').value;
+                const raw = localStorage.getItem(AI_STORAGE_KEY);
+                const s = raw ? JSON.parse(raw) : null;
+                const savedKey = (s && s.keys && s.keys[p]) || '';
+                const savedModel = (s && s.models && s.models[p]) || '';
+                document.getElementById('aiApiKey').value = savedKey;
+                fetchAndPopulateModels(p, savedKey, savedModel);
+            });
+            // Recarga modelos cuando el usuario termina de escribir/pegar la key
+            document.getElementById('aiApiKey').addEventListener('blur', () => {
+                const p = document.getElementById('aiProvider').value;
+                const key = document.getElementById('aiApiKey').value.trim();
+                const raw = localStorage.getItem(AI_STORAGE_KEY);
+                const s = raw ? JSON.parse(raw) : null;
+                const savedModel = (s && s.models && s.models[p]) || '';
+                fetchAndPopulateModels(p, key, savedModel);
+                saveAiSettings();
+            });
+            document.getElementById('aiRunBtn').addEventListener('click', runInterpretation);
+            document.getElementById('aiModel').addEventListener('change', saveAiSettings);
+        }
+
+        // ========== INIT ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            setupUpload();
+            setupAi();
+            loadAiSettings();
+            loadData();
+            setInterval(loadData, 300000); // Actualizar cada 5 minutos
+        });
+
+        /* ====== DNS TOOLS ====== */
+        async function runDns(type) {
+            const resultEl = document.getElementById(`${type}Result`);
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<span style="color:var(--text-secondary);font-size:.8rem">Consultando…</span>';
+
+            const payload = { type };
+            if (type === 'spf')   payload.domain   = document.getElementById('spfDomain').value.trim() || 'yourdomain.com';
+            if (type === 'dkim') { payload.domain   = document.getElementById('dkimDomain').value.trim() || 'yourdomain.com';
+                                   payload.selector = document.getElementById('dkimSelector').value.trim() || 'resend'; }
+            if (type === 'dmarc') payload.domain   = document.getElementById('dmarcDomain').value.trim() || 'yourdomain.com';
+            if (type === 'mx')    payload.domain   = document.getElementById('mxDomain').value.trim() || 'yourdomain.com';
+            if (type === 'ptr')   payload.ip        = document.getElementById('ptrIp').value.trim();
+
+            try {
+                const resp = await fetch(`${API_URL}/dns-lookup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    resultEl.innerHTML = `<span style="color:var(--danger);font-size:.8rem">❌ ${data.error}</span>`;
+                    return;
+                }
+                const records = data.records.length
+                    ? data.records.map(r => `<code style="display:block;word-break:break-all;font-size:.75rem;color:var(--text-primary);background:var(--bg-secondary);padding:.25rem .5rem;border-radius:4px;margin:.2rem 0">${r}</code>`).join('')
+                    : '<span style="color:var(--text-secondary);font-size:.8rem">Sin registros</span>';
+                const analysis = data.analysis
+                    ? `<div style="margin-top:.5rem;font-size:.8rem;color:var(--text-secondary);white-space:pre-line">${data.analysis}</div>`
+                    : '';
+                resultEl.innerHTML = `
+                    <div style="font-size:.72rem;color:var(--text-secondary);margin:.5rem 0 .25rem">Query: <code>${data.query || ''}</code></div>
+                    ${records}${analysis}`;
+            } catch(e) {
+                resultEl.innerHTML = `<span style="color:var(--danger);font-size:.8rem">❌ Error de conexión con la API</span>`;
+            }
+        }
+
+        // Enter en cualquier input de DNS tools dispara la consulta correspondiente
+        document.querySelectorAll('#dnsToolsPanel input').forEach(input => {
+            input.addEventListener('keydown', e => {
+                if (e.key !== 'Enter') return;
+                const id = input.id;
+                if (id.startsWith('spf'))   runDns('spf');
+                if (id.startsWith('dkim'))  runDns('dkim');
+                if (id.startsWith('dmarc')) runDns('dmarc');
+                if (id.startsWith('mx'))    runDns('mx');
+                if (id.startsWith('ptr'))   runDns('ptr');
+            });
+        });
+
+        /* ====== DNS RECORDS TABLE ====== */
+        const TYPE_COLORS = {TXT:'var(--info)',MX:'var(--warning)',A:'var(--success)',CNAME:'var(--text-secondary)',AAAA:'var(--success)',NS:'var(--text-secondary)'};
+
+        async function loadDnsRecords() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const tbody = document.getElementById('dnsRecordsBody');
+            try {
+                const resp = await fetch(`${API_URL}/dns-records?domain=${encodeURIComponent(domain)}`);
+                const data = await resp.json();
+                if (!data.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;color:var(--text-secondary)">Sin registros documentados. Usá "+ Agregar registro" para empezar.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.map(r => {
+                    const color = TYPE_COLORS[r.record_type] || 'var(--text-primary)';
+                    const shortVal = r.value.length > 80 ? r.value.slice(0, 80) + '…' : r.value;
+                    return `<tr style="border-bottom:1px solid var(--border);" data-id="${r.id}">
+                        <td style="padding:6px 8px;"><span style="background:${color}22;color:${color};border-radius:4px;padding:2px 6px;font-weight:700;font-size:.75rem;">${r.record_type}</span></td>
+                        <td style="padding:6px 8px;font-family:monospace;font-size:.8rem;color:var(--info)">${r.host}</td>
+                        <td style="padding:6px 8px;font-family:monospace;font-size:.78rem;word-break:break-all;" title="${r.value}">${shortVal}</td>
+                        <td style="padding:6px 8px;font-size:.78rem;color:var(--text-secondary)">${r.notes || '—'}</td>
+                        <td style="padding:6px 8px;white-space:nowrap;">
+                            <button onclick="editRecord(${r.id})" style="padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);cursor:pointer;font-size:.75rem;">✏️</button>
+                            <button onclick="deleteRecord(${r.id})" style="padding:2px 8px;background:none;border:1px solid var(--border);border-radius:4px;color:var(--danger);cursor:pointer;font-size:.75rem;">🗑</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:1rem">Error al cargar registros</td></tr>`;
+            }
+        }
+
+        let _allRecords = [];
+
+        function showAddRecordForm() {
+            document.getElementById('recEditId').value = '';
+            document.getElementById('recType').value = 'TXT';
+            document.getElementById('recHost').value = '';
+            document.getElementById('recValue').value = '';
+            document.getElementById('recTtl').value = 'Automatic';
+            document.getElementById('recNotes').value = '';
+            document.getElementById('recordForm').style.display = 'block';
+            document.getElementById('recHost').focus();
+        }
+
+        async function editRecord(id) {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const resp = await fetch(`${API_URL}/dns-records?domain=${encodeURIComponent(domain)}`);
+            const data = await resp.json();
+            const r = data.find(x => x.id === id);
+            if (!r) return;
+            document.getElementById('recEditId').value = id;
+            document.getElementById('recType').value = r.record_type;
+            document.getElementById('recHost').value = r.host;
+            document.getElementById('recValue').value = r.value;
+            document.getElementById('recTtl').value = r.ttl || 'Automatic';
+            document.getElementById('recNotes').value = r.notes || '';
+            document.getElementById('recordForm').style.display = 'block';
+            document.getElementById('recHost').focus();
+        }
+
+        function cancelRecord() {
+            document.getElementById('recordForm').style.display = 'none';
+        }
+
+        async function saveRecord() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const editId = document.getElementById('recEditId').value;
+            const payload = {
+                domain,
+                record_type: document.getElementById('recType').value,
+                host: document.getElementById('recHost').value.trim(),
+                value: document.getElementById('recValue').value.trim(),
+                ttl: document.getElementById('recTtl').value.trim() || 'Automatic',
+                notes: document.getElementById('recNotes').value.trim(),
+            };
+            if (!payload.host || !payload.value) { alert('Host y Valor son obligatorios'); return; }
+            const url = editId ? `${API_URL}/dns-records/${editId}` : `${API_URL}/dns-records`;
+            const method = editId ? 'PUT' : 'POST';
+            try {
+                const resp = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+                const data = await resp.json();
+                if (data.error) { alert(data.error); return; }
+                cancelRecord();
+                loadDnsRecords();
+            } catch(e) { alert('Error al guardar'); }
+        }
+
+        async function deleteRecord(id) {
+            if (!confirm('¿Eliminar este registro?')) return;
+            try {
+                await fetch(`${API_URL}/dns-records/${id}`, {method:'DELETE'});
+                loadDnsRecords();
+            } catch(e) { alert('Error al eliminar'); }
+        }
+
+        function toggleExportMenu() {
+            const menu = document.getElementById('exportDnsMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('exportDnsWrap');
+            if (wrap && !wrap.contains(e.target)) {
+                document.getElementById('exportDnsMenu').style.display = 'none';
+            }
+        });
+
+        async function exportDnsRecords(format) {
+            document.getElementById('exportDnsMenu').style.display = 'none';
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const resp = await fetch(`${API_URL}/dns-records?domain=${encodeURIComponent(domain)}`);
+            const data = await resp.json();
+            if (!data.length) { alert('Sin registros para exportar.'); return; }
+
+            const headers = ['Tipo', 'Host', 'Valor', 'TTL', 'Notas'];
+            const rows = data.map(r => [r.record_type, r.host, r.value, r.ttl || 'Automatic', r.notes || '']);
+
+            if (format === 'csv') {
+                const escape = v => '"' + String(v).replace(/"/g, '""') + '"';
+                const csv = '﻿' + [headers, ...rows].map(r => r.map(escape).join(',')).join('\r\n');
+                const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `dns_records_${domain}_${new Date().toISOString().slice(0,10)}.csv`;
+                a.click();
+            } else {
+                const wsData = [headers, ...rows];
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+                ws['!cols'] = [{wch:8},{wch:22},{wch:70},{wch:12},{wch:40}];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Registros DNS');
+                XLSX.writeFile(wb, `dns_records_${domain}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            }
+        }
+
+        /* ====== DNS SETUP ====== */
+        async function loadDnsSetup() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            document.getElementById('setupDomain').value = domain;
+            try {
+                const resp = await fetch(`${API_URL}/dns-setup?domain=${encodeURIComponent(domain)}`);
+                const d = await resp.json();
+                if (!d.domain) return;
+                document.getElementById('setupDnsProvider').value = d.dns_provider || '';
+                document.getElementById('setupEmailStack').value = d.email_stack || '';
+                document.getElementById('setupDkimSelectors').value = (d.dkim_selectors || []).join(', ');
+                document.getElementById('setupSpf').value = d.spf_record || '';
+                document.getElementById('setupDmarc').value = d.dmarc_record || '';
+                document.getElementById('setupNotes').value = d.extra_notes || '';
+                document.getElementById('setupSaveStatus').textContent = `Última actualización: ${d.updated_at ? new Date(d.updated_at).toLocaleString('es-AR') : '?'}`;
+            } catch(e) {}
+        }
+
+        document.getElementById('dnsToolsPanel').addEventListener('toggle', function() {
+            if (this.open) { loadDnsSetup(); loadDnsRecords(); }
+        });
+
+        async function saveDnsSetup() {
+            const statusEl = document.getElementById('setupSaveStatus');
+            statusEl.textContent = 'Guardando…';
+            const payload = {
+                domain: document.getElementById('setupDomain').value.trim() || 'yourdomain.com',
+                dns_provider: document.getElementById('setupDnsProvider').value,
+                email_stack: document.getElementById('setupEmailStack').value,
+                dkim_selectors: document.getElementById('setupDkimSelectors').value,
+                spf_record: document.getElementById('setupSpf').value.trim(),
+                dmarc_record: document.getElementById('setupDmarc').value.trim(),
+                extra_notes: document.getElementById('setupNotes').value.trim(),
+            };
+            try {
+                const resp = await fetch(`${API_URL}/dns-setup`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const d = await resp.json();
+                statusEl.style.color = d.domain ? 'var(--success)' : 'var(--danger)';
+                statusEl.textContent = d.domain ? `✅ Guardado ${new Date(d.updated_at).toLocaleString('es-AR')}` : `❌ ${d.error}`;
+            } catch(e) {
+                statusEl.style.color = 'var(--danger)';
+                statusEl.textContent = '❌ Error de conexión';
+            }
+        }
+
+        /* ====== IP + PTR TABLE ====== */
+        async function loadIpPtr() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const container = document.getElementById('ipPtrContainer');
+            const tbody = document.getElementById('ipPtrBody');
+            container.style.display = 'block';
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:.75rem;color:var(--text-secondary)">Consultando PTR…</td></tr>';
+            try {
+                const resp = await fetch(`${API_URL}/source-ips-ptr?domain=${encodeURIComponent(domain)}`);
+                const data = await resp.json();
+                if (!data.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:.75rem;color:var(--text-secondary)">Sin IPs registradas</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.map(row => {
+                    const ptrText = row.ptr || '—';
+                    const badge = row.ptr_status === 'ok'
+                        ? `<span style="color:var(--success)">✅ PTR ok</span>`
+                        : row.ptr_status === 'none'
+                            ? `<span style="color:var(--text-secondary)">⚠️ Sin PTR</span>`
+                            : `<span style="color:var(--danger)">❌ Error</span>`;
+                    return `<tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:6px 10px;font-family:monospace;font-size:.82rem">${row.ip}</td>
+                        <td style="padding:6px 10px;text-align:center">${row.email_count}</td>
+                        <td style="padding:6px 10px;color:var(--text-secondary);font-size:.82rem">${ptrText}</td>
+                        <td style="padding:6px 10px;text-align:center">${badge}</td>
+                    </tr>`;
+                }).join('');
+            } catch(e) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger)">Error al cargar</td></tr>';
+            }
+        }
+
+        /* ====== DNS AI ANALYZE ====== */
+        const DNS_AI_STORAGE_KEY = 'dmarc_ai_settings';
+
+        function loadDnsAiKey() {
+            const provider = document.getElementById('dnsAiProvider').value;
+            try {
+                const saved = JSON.parse(localStorage.getItem(DNS_AI_STORAGE_KEY) || '{}');
+                document.getElementById('dnsAiKey').value = saved.keys?.[provider] || '';
+            } catch(e) {}
+        }
+        loadDnsAiKey();
+
+        async function runDnsAnalyze() {
+            const provider = document.getElementById('dnsAiProvider').value;
+            const api_key = document.getElementById('dnsAiKey').value.trim();
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const resultEl = document.getElementById('dnsAiResult');
+            if (!api_key) { alert('Ingresá la API key del provider seleccionado'); return; }
+
+            // Guardar key en localStorage
+            try {
+                const saved = JSON.parse(localStorage.getItem(DNS_AI_STORAGE_KEY) || '{}');
+                if (!saved.keys) saved.keys = {};
+                saved.keys[provider] = api_key;
+                localStorage.setItem(DNS_AI_STORAGE_KEY, JSON.stringify(saved));
+            } catch(e) {}
+
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<span style="color:var(--text-secondary)">Analizando configuración DNS con IA…</span>';
+
+            try {
+                const resp = await fetch(`${API_URL}/dns-analyze`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({domain, provider, api_key})
+                });
+                const data = await resp.json();
+                if (data.error) { resultEl.innerHTML = `<span style="color:var(--danger)">❌ ${data.error}</span>`; return; }
+                resultEl.innerHTML = typeof marked !== 'undefined'
+                    ? marked.parse(data.analysis)
+                    : data.analysis.replace(/\n/g, '<br>');
+            } catch(e) {
+                resultEl.innerHTML = `<span style="color:var(--danger)">❌ Error de conexión</span>`;
+            }
+        }
+
+        /* ====== HISTORIAL MODAL ====== */
+        async function openHistoryModal() {
+            const domain = document.getElementById('domainFilter').value || 'yourdomain.com';
+            const modal = document.getElementById('historyModal');
+            const tbody = document.getElementById('historyBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">Cargando…</td></tr>';
+            modal.style.display = 'flex';
+            try {
+                const resp = await fetch(`${API_URL}/report-history?domain=${encodeURIComponent(domain)}&limit=50`);
+                const data = await resp.json();
+                if (!data.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">Sin reportes cargados</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.map(r => {
+                    const cargado = new Date(r.created_at).toLocaleString('es-AR', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+                    const periodo = `${fmtDate(r.date_begin)} → ${fmtDate(r.date_end)}`;
+                    const alertas = r.alerts_count > 0
+                        ? `<span style="color:var(--warning)">⚠️ ${r.alerts_count}</span>`
+                        : `<span style="color:var(--success)">✅ 0</span>`;
+                    return `<tr>
+                        <td>${cargado}</td>
+                        <td>${r.domain}</td>
+                        <td style="font-size:.85rem;color:var(--text-secondary)">${periodo}</td>
+                        <td style="text-align:center">${r.records_count}</td>
+                        <td style="text-align:center">${alertas}</td>
+                    </tr>`;
+                }).join('');
+            } catch(e) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Error al cargar historial</td></tr>';
+            }
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('historyModal').style.display = 'none';
+        }
+
+        document.getElementById('historyModal').addEventListener('click', function(e) {
+            if (e.target === this) closeHistoryModal();
+        });
+    </script>
+
+    <!-- Modal Historial -->
+    <div id="historyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(92vw,750px);max-height:80vh;display:flex;flex-direction:column;gap:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 style="margin:0;color:var(--text-primary)">📋 Historial de reportes cargados</h3>
+                <button onclick="closeHistoryModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.4rem;cursor:pointer;line-height:1;">✕</button>
+            </div>
+            <div style="overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:.9rem;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border);color:var(--text-secondary);text-align:left;">
+                            <th style="padding:8px 12px">Fecha carga</th>
+                            <th style="padding:8px 12px">Dominio</th>
+                            <th style="padding:8px 12px">Período del reporte</th>
+                            <th style="padding:8px 12px;text-align:center">Registros</th>
+                            <th style="padding:8px 12px;text-align:center">Alertas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

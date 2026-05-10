@@ -1,0 +1,34 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements
+RUN pip install --no-cache-dir \
+    psycopg2-binary==2.9.9 \
+    flask==3.0.0 \
+    flask-cors==4.0.0 \
+    python-dotenv==1.0.0 \
+    requests==2.32.3 \
+    dnspython==2.6.1
+
+# Copiar aplicación
+COPY dmarc_monitor.py dmarc_api.py ./
+
+# Crear directorio para reportes
+RUN mkdir -p /app/reports
+
+# Exponer puerto
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:5000/api/health || exit 1
+
+# Iniciar API
+CMD ["python", "dmarc_api.py"]

@@ -1,0 +1,552 @@
+{
+  "info": {
+    "name": "DMARC Intelligence Console",
+    "description": "Colección completa para probar la API del DMARC Monitor (Flask, puerto 5000).\n\nVariables:\n- base_url: http://localhost:5000 (local) o http://localhost (Docker nginx)\n- domain: yourdomain.com (default)\n- ai_api_key: tu API key del provider",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "domain",
+      "value": "yourdomain.com",
+      "type": "string"
+    },
+    {
+      "key": "ai_api_key",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Verifica conexión a la BD. Devuelve {status, database}."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Summary",
+      "item": [
+        {
+          "name": "Summary — últimos 7 días",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/summary?domain={{domain}}&days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "summary"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "days", "value": "7" }
+              ]
+            },
+            "description": "Stats SPF/DKIM agregadas: total emails, pass/fail counts y porcentajes."
+          },
+          "response": []
+        },
+        {
+          "name": "Summary — últimos 30 días",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/summary?domain={{domain}}&days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "summary"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "days", "value": "30" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Reports — listado básico",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/reports?domain={{domain}}&limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Lista de records (1 fila por <record> XML). Paginable con limit/offset."
+          },
+          "response": []
+        },
+        {
+          "name": "Reports — segunda página",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/reports?domain={{domain}}&limit=50&offset=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "50" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reports — sin filtro de dominio (todos)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/reports?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports"],
+              "query": [
+                { "key": "domain", "value": "", "disabled": true },
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Sin ?domain → devuelve records de todos los dominios."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "Alerts — todas activas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/alerts?domain={{domain}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" }
+              ]
+            },
+            "description": "Alertas no reconocidas (acknowledged=FALSE). Máx 100 resultados."
+          },
+          "response": []
+        },
+        {
+          "name": "Alerts — solo críticas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/alerts?domain={{domain}}&severity=critical",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "severity", "value": "critical" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Alerts — solo high",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/alerts?domain={{domain}}&severity=high",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "severity", "value": "high" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Alerts — solo medium",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/alerts?domain={{domain}}&severity=medium",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "severity", "value": "medium" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Acknowledge Alert",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/acknowledge-alert",
+              "host": ["{{base_url}}"],
+              "path": ["api", "acknowledge-alert"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_id\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Marca una alerta como reconocida. Reemplazar alert_id con el ID real."
+          },
+          "response": []
+        },
+        {
+          "name": "Acknowledge Alert — sin alert_id (400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/acknowledge-alert",
+              "host": ["{{base_url}}"],
+              "path": ["api", "acknowledge-alert"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Prueba de validación: debe devolver 400 con error 'alert_id required'."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trends",
+      "item": [
+        {
+          "name": "Trends — 30 días",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/trends?domain={{domain}}&days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "trends"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "days", "value": "30" }
+              ]
+            },
+            "description": "Porcentaje SPF/DKIM pass agrupado por día. Datos para el chart de tendencias."
+          },
+          "response": []
+        },
+        {
+          "name": "Trends — 7 días",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/trends?domain={{domain}}&days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "trends"],
+              "query": [
+                { "key": "domain", "value": "{{domain}}" },
+                { "key": "days", "value": "7" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Upload Report",
+      "item": [
+        {
+          "name": "Upload — XML",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/upload-report",
+              "host": ["{{base_url}}"],
+              "path": ["api", "upload-report"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Seleccionar un .xml de reporte DMARC"
+                }
+              ]
+            },
+            "description": "Subir un reporte XML. Form-data, campo 'files'. Responde con status: inserted | duplicate | error."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload — múltiples archivos",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/upload-report",
+              "host": ["{{base_url}}"],
+              "path": ["api", "upload-report"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Primer archivo"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Segundo archivo"
+                }
+              ]
+            },
+            "description": "Multi-file: repetir el campo 'files'. Acepta .xml, .xml.gz y .zip."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload — sin archivos (400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/upload-report",
+              "host": ["{{base_url}}"],
+              "path": ["api", "upload-report"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            },
+            "description": "Prueba de validación: debe devolver 400 'No files in request'."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "AI",
+      "item": [
+        {
+          "name": "List Models — Claude",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/models",
+              "host": ["{{base_url}}"],
+              "path": ["api", "models"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"claude\",\n  \"api_key\": \"{{ai_api_key}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Devuelve lista de modelos Claude disponibles. La api_key no se persiste."
+          },
+          "response": []
+        },
+        {
+          "name": "List Models — OpenAI",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/models",
+              "host": ["{{base_url}}"],
+              "path": ["api", "models"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"openai\",\n  \"api_key\": \"{{ai_api_key}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Models — Gemini",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/models",
+              "host": ["{{base_url}}"],
+              "path": ["api", "models"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"gemini\",\n  \"api_key\": \"{{ai_api_key}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Interpret — Claude",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/interpret",
+              "host": ["{{base_url}}"],
+              "path": ["api", "interpret"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"claude\",\n  \"api_key\": \"{{ai_api_key}}\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"domain\": \"{{domain}}\",\n  \"days\": 30\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Análisis IA del estado DMARC. Devuelve {provider, model, response (markdown), tokens_used}."
+          },
+          "response": []
+        },
+        {
+          "name": "Interpret — OpenAI",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/interpret",
+              "host": ["{{base_url}}"],
+              "path": ["api", "interpret"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"openai\",\n  \"api_key\": \"{{ai_api_key}}\",\n  \"model\": \"gpt-4o\",\n  \"domain\": \"{{domain}}\",\n  \"days\": 30\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Interpret — Gemini Flash",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/interpret",
+              "host": ["{{base_url}}"],
+              "path": ["api", "interpret"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"gemini\",\n  \"api_key\": \"{{ai_api_key}}\",\n  \"model\": \"gemini-2.0-flash\",\n  \"domain\": \"{{domain}}\",\n  \"days\": 30\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Interpret — sin api_key (400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/interpret",
+              "host": ["{{base_url}}"],
+              "path": ["api", "interpret"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"claude\",\n  \"domain\": \"{{domain}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Prueba de validación: debe devolver 400 'api_key requerido'."
+          },
+          "response": []
+        },
+        {
+          "name": "Interpret — provider inválido (400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/interpret",
+              "host": ["{{base_url}}"],
+              "path": ["api", "interpret"]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"mistral\",\n  \"api_key\": \"test\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Prueba de validación: debe devolver 400 'Provider inválido'."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "Endpoint inexistente (404)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/nonexistent",
+              "host": ["{{base_url}}"],
+              "path": ["api", "nonexistent"]
+            },
+            "description": "Debe devolver 404 con {error: 'Endpoint not found'}."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

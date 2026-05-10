@@ -1,0 +1,197 @@
+{
+  "name": "DMARC Report Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerOn": "UPDATE",
+        "labelNames": [
+          "DMARC"
+        ],
+        "returnAll": false,
+        "limit": 10
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        100
+      ],
+      "credentials": {
+        "googleGmailOAuth2": "gmail_creds"
+      }
+    },
+    {
+      "parameters": {
+        "mailbox": "Inbox",
+        "output": "object",
+        "simple": false,
+        "includeResolved": false
+      },
+      "name": "Gmail - Get Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        300,
+        100
+      ],
+      "credentials": {
+        "googleGmailOAuth2": "gmail_creds"
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "pass": "any",
+          "conditions": [
+            {
+              "key": "from",
+              "condition": "contains",
+              "value": "noreply-dmarc-support@google.com"
+            },
+            {
+              "key": "subject",
+              "condition": "contains",
+              "value": "DMARC"
+            }
+          ]
+        }
+      },
+      "name": "Filter - DMARC Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extraer adjuntos del email\nconst attachments = items[0].json.attachments || [];\nconst xmlAttachments = attachments.filter(a => a.filename.endsWith('.xml'));\n\nreturn {\n  json: {\n    attachments: xmlAttachments,\n    emailId: items[0].json.id,\n    from: items[0].json.from,\n    date: items[0].json.date\n  }\n};"
+      },
+      "name": "Extract Attachments",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        700,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/gmail/v1/users/me/messages/{{ $node[\"Gmail - Get Email\"].json.id }}/attachments/{{ $item.json.attachmentId }}",
+        "authentication": "oAuth2",
+        "method": "GET",
+        "responseFormat": "json"
+      },
+      "name": "Download XML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        900,
+        100
+      ],
+      "credentials": {
+        "oAuth2": "google_oauth"
+      }
+    },
+    {
+      "parameters": {
+        "command": "python /home/claude/dmarc_monitor.py --file {{ $node[\"Download XML\"].json.data }} && curl -X POST http://localhost:3000/webhook/dmarc-processed -H 'Content-Type: application/json' -d '{\"status\": \"processed\", \"domain\": \"{{ $json.domain }}\"}'"
+      },
+      "name": "Execute Python Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK_URL",
+        "contentType": "application/json",
+        "body": "{\n  \"text\": \"✅ DMARC Report Processed\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*DMARC Report Procesado*\\n*Domain:* {{ $json.domain }}\\n*Status:* {{ $json.status }}\"\n      }\n    }\n  ]\n}"
+      },
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1300,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Get Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Get Email": {
+      "main": [
+        [
+          {
+            "node": "Filter - DMARC Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter - DMARC Email": {
+      "main": [
+        [
+          {
+            "node": "Extract Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Attachments": {
+      "main": [
+        [
+          {
+            "node": "Download XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download XML": {
+      "main": [
+        [
+          {
+            "node": "Execute Python Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Python Script": {
+      "main": [
+        [
+          {
+            "node": "Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}

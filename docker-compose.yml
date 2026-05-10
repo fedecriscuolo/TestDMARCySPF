@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # ========== API BACKEND ==========
+  # Postgres NO se levanta acá; lo provee shared-postgres (../shared-postgres/docker-compose.yml)
+  # vía host.docker.internal:5432
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: dmarc_api
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-dmarc_monitor}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+      SMTP_SERVER: ${SMTP_SERVER:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+    ports:
+      - "5000:5000"
+    volumes:
+      # Montar archivos de configuración
+      - ./.env:/app/.env:ro
+      - ./dmarc_monitor.py:/app/dmarc_monitor.py:ro
+      - ./dmarc_api.py:/app/dmarc_api.py:ro
+    networks:
+      - dmarc_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========== SERVIDOR WEB (Dashboard) ==========
+  web:
+    image: nginx:alpine
+    container_name: dmarc_web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./dmarc_dashboard.html:/usr/share/nginx/html/index.html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - dmarc_net
+    restart: unless-stopped
+
+networks:
+  dmarc_net:
+    driver: bridge
+
+# ========== INSTRUCCIONES ==========
+#
+# 0. Levantar Postgres compartido (una sola vez por sesión):
+#    cd ../shared-postgres && docker-compose up -d
+#
+# 1. Crear .env con tus variables (DB_PASSWORD debe coincidir con shared-postgres/.env):
+#    cp .env.example .env
+#    nano .env
+#
+# 2. Iniciar servicios:
+#    docker-compose up -d --build
+#
+# 3. Inicializar tablas (primera vez):
+#    docker-compose exec api python dmarc_monitor.py --init-db
+#
+# 4. Ver logs:
+#    docker-compose logs -f api
+#    docker logs -f shared_postgres   # postgres vive en otro compose
+#
+# 5. Procesar reporte:
+#    docker-compose exec api python dmarc_monitor.py --file reporte.xml
+#
+# 6. Acceder:
+#    Dashboard: http://localhost
+#    API: http://localhost:5000/api/health
+#
+# 7. Detener:
+#    docker-compose down                            # solo este stack
+#    cd ../shared-postgres && docker-compose down   # también el postgres
+#
+# NOTAS:
+# - Cambiar puerto 80 si está en uso: puerto_local:80 en web.ports
+# - Para HTTPS, agregar certificado en nginx.conf
+# - La data de Postgres vive en el volumen shared_pgdata del compose ../shared-postgres/
