@@ -256,7 +256,7 @@ docker-compose down
 | Carga en lote | Ctrl+click en varios archivos o arrastrar grupo |
 | Verificar idempotencia | Subir el mismo archivo dos veces → debe decir `duplicate` |
 | Consulta SPF | DNS Tools → 🔎 Consultas → SPF |
-| Consulta DKIM | DNS Tools → 🔎 Consultas → DKIM + selector (ej: `google`, `resend`) |
+| Consulta DKIM | DNS Tools → 🔎 Consultas → DKIM + selector (ej: `google`, `default`, `mail`) |
 | Consulta DMARC | DNS Tools → 🔎 Consultas → DMARC |
 | PTR manual | DNS Tools → 🔎 Consultas → PTR + IP |
 | IPs origen + PTR | DNS Tools → 🔍 IPs origen → "Analizar IPs" |

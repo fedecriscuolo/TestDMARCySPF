@@ -610,7 +610,7 @@
                             </div>
                             <div>
                                 <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Host</label>
-                                <input id="recHost" type="text" placeholder="@ _dmarc send resend._domainkey" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;">
+                                <input id="recHost" type="text" placeholder="@ _dmarc mail selector._domainkey" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;">
                             </div>
                             <div style="grid-column:span 1">
                                 <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">TTL</label>
@@ -623,11 +623,11 @@
                         </div>
                         <div style="margin-bottom:.5rem;">
                             <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Valor</label>
-                            <textarea id="recValue" rows="2" placeholder="v=spf1 include:… o feedback-smtp.sa-east-1.amazonses.com." style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;resize:vertical;"></textarea>
+                            <textarea id="recValue" rows="2" placeholder="v=spf1 include:_spf.mailprovider.com ~all" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;font-family:monospace;resize:vertical;"></textarea>
                         </div>
                         <div>
                             <label style="font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem">Notas / propósito</label>
-                            <input id="recNotes" type="text" placeholder="Ej: Autoriza Amazon SES como envelope sender de Resend" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;">
+                            <input id="recNotes" type="text" placeholder="Ej: Registro SPF para subdominio de envío transaccional" style="width:100%;box-sizing:border-box;padding:.4rem .5rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:.82rem;">
                         </div>
                         <input id="recEditId" type="hidden" value="">
                     </div>
@@ -676,20 +676,22 @@
                             <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Stack de email</label>
                             <select id="setupEmailStack" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
                                 <option value="">Seleccionar…</option>
-                                <option value="Resend+SES">Resend + Amazon SES</option>
                                 <option value="Google Workspace">Google Workspace</option>
                                 <option value="SendGrid">SendGrid</option>
-                                <option value="Postfix">Postfix propio</option>
+                                <option value="Mailgun">Mailgun</option>
+                                <option value="Resend+SES">Resend + Amazon SES</option>
+                                <option value="Amazon SES">Amazon SES directo</option>
+                                <option value="Postfix">Postfix / servidor propio</option>
                                 <option value="Otro">Otro</option>
                             </select>
                         </div>
                         <div>
                             <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Selectores DKIM (separados por coma)</label>
-                            <input id="setupDkimSelectors" type="text" placeholder="resend, google" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <input id="setupDkimSelectors" type="text" placeholder="google, default, mail" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
                         </div>
                         <div style="grid-column:1/-1">
                             <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Registro SPF actual</label>
-                            <input id="setupSpf" type="text" placeholder="v=spf1 include:amazonses.com ~all" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;font-family:monospace;">
+                            <input id="setupSpf" type="text" placeholder="v=spf1 include:_spf.mailprovider.com ~all" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;font-family:monospace;">
                         </div>
                         <div style="grid-column:1/-1">
                             <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Registro DMARC actual</label>
@@ -697,7 +699,7 @@
                         </div>
                         <div style="grid-column:1/-1">
                             <label style="font-size:.78rem;color:var(--text-secondary);display:block;margin-bottom:.2rem">Notas adicionales</label>
-                            <textarea id="setupNotes" rows="2" placeholder="Ej: send.yourdomain.com es el envelope sender de Resend, pendiente agregar SPF en ese subdominio…" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;resize:vertical;"></textarea>
+                            <textarea id="setupNotes" rows="2" placeholder="Ej: subdominio send. usado como envelope sender por el proveedor de email transaccional" style="width:100%;box-sizing:border-box;padding:.45rem .7rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;resize:vertical;"></textarea>
                         </div>
                         <div style="grid-column:1/-1;display:flex;align-items:center;gap:1rem;">
                             <button onclick="saveDnsSetup()" style="padding:.5rem 1.25rem;background:var(--info);color:white;border:none;border-radius:6px;cursor:pointer;font-size:.85rem;">💾 Guardar configuración</button>
@@ -770,7 +772,7 @@
                     <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:1rem;">
                         <div style="font-weight:600;margin-bottom:.75rem;color:var(--success)">🔑 DKIM Check</div>
                         <div style="display:flex;gap:.5rem;margin-bottom:.5rem;">
-                            <input id="dkimSelector" type="text" placeholder="selector (ej: resend)" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
+                            <input id="dkimSelector" type="text" placeholder="selector (ej: google, default, mail)" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
                         </div>
                         <div style="display:flex;gap:.5rem;">
                             <input id="dkimDomain" type="text" placeholder="yourdomain.com" style="flex:1;padding:.5rem .75rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:.85rem;">
@@ -1475,7 +1477,7 @@
             const payload = { type };
             if (type === 'spf')   payload.domain   = document.getElementById('spfDomain').value.trim() || 'yourdomain.com';
             if (type === 'dkim') { payload.domain   = document.getElementById('dkimDomain').value.trim() || 'yourdomain.com';
-                                   payload.selector = document.getElementById('dkimSelector').value.trim() || 'resend'; }
+                                   payload.selector = document.getElementById('dkimSelector').value.trim() || 'default'; }
             if (type === 'dmarc') payload.domain   = document.getElementById('dmarcDomain').value.trim() || 'yourdomain.com';
             if (type === 'mx')    payload.domain   = document.getElementById('mxDomain').value.trim() || 'yourdomain.com';
             if (type === 'ptr')   payload.ip        = document.getElementById('ptrIp').value.trim();
