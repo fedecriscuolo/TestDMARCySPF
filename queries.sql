@@ -1,272 +1,287 @@
--- ========================================
--- DMARC Monitor - Useful SQL Queries
--- ========================================
--- Copiar y ejecutar en psql o DB client
--- psql -h localhost -U postgres -d dmarc_monitor
+-- ============================================================
+-- DMARC Monitor — Queries para exploración directa en BD
+-- ============================================================
+-- Conectar: psql -h localhost -U postgres -d dmarc_monitor
+-- O desde Docker: docker-compose exec api psql -U postgres dmarc_monitor
+--
+-- Schema (7 tablas):
+--   dmarc_reports          — 1 fila por XML procesado
+--   dmarc_report_records   — 1 fila por <record> (por IP origen)
+--   dmarc_dkim_results     — detalle DKIM por record
+--   dmarc_spf_results      — detalle SPF por record
+--   dmarc_alerts           — alertas automáticas por record
+--   dns_setup              — config del dominio (proveedor, stack, selectores)
+--   dns_records            — backup/doc de registros DNS
+-- ============================================================
 
--- ========== DIAGNÓSTICO BÁSICO ==========
 
--- Ver todas las tablas creadas
-\dt
+-- ========== 1. ESTADO GENERAL ==========
 
--- Contar reportes por dominio
-SELECT domain, COUNT(*) as total
+-- Cuántos registros hay en cada tabla
+SELECT 'dmarc_reports'        AS tabla, COUNT(*) AS filas FROM dmarc_reports
+UNION ALL
+SELECT 'dmarc_report_records',          COUNT(*) FROM dmarc_report_records
+UNION ALL
+SELECT 'dmarc_dkim_results',            COUNT(*) FROM dmarc_dkim_results
+UNION ALL
+SELECT 'dmarc_spf_results',             COUNT(*) FROM dmarc_spf_results
+UNION ALL
+SELECT 'dmarc_alerts',                  COUNT(*) FROM dmarc_alerts
+UNION ALL
+SELECT 'dns_records',                   COUNT(*) FROM dns_records
+UNION ALL
+SELECT 'dns_setup',                     COUNT(*) FROM dns_setup;
+
+-- Reportes procesados por dominio
+SELECT domain, COUNT(*) AS xmls_procesados
 FROM dmarc_reports
 GROUP BY domain
-ORDER BY total DESC;
+ORDER BY xmls_procesados DESC;
 
--- Últimos 10 reportes
-SELECT 
-    domain,
-    to_timestamp(date_begin)::date as date,
-    source_ip,
-    count,
-    spf_result,
-    dkim_result,
-    disposition
-FROM dmarc_reports
-ORDER BY date_begin DESC
+-- Últimos 10 XMLs cargados
+SELECT
+    r.domain,
+    to_timestamp(r.date_begin)::date AS periodo_inicio,
+    to_timestamp(r.date_end)::date   AS periodo_fin,
+    r.org_name                        AS enviado_por,
+    r.created_at                      AS cargado_el,
+    COUNT(rr.id)                      AS registros
+FROM dmarc_reports r
+LEFT JOIN dmarc_report_records rr ON rr.report_id = r.id
+GROUP BY r.id
+ORDER BY r.created_at DESC
 LIMIT 10;
 
--- ========== ANÁLISIS SPF/DKIM ==========
 
--- Resumen de SPF últimos 7 días
-SELECT 
-    domain,
-    spf_result,
-    COUNT(*) as reports,
-    SUM(count) as total_emails,
-    ROUND(100.0 * SUM(count) / 
-        SUM(SUM(count)) OVER (PARTITION BY domain), 2) as percentage
-FROM dmarc_reports
-WHERE date_begin > EXTRACT(EPOCH FROM NOW() - INTERVAL '7 days')::bigint
-GROUP BY domain, spf_result
-ORDER BY domain, spf_result;
+-- ========== 2. SPF / DKIM — RESULTADOS ==========
 
--- DKIM detailed results por selector
-SELECT 
-    domain,
-    selector,
-    result,
-    COUNT(*) as occurrences
-FROM dmarc_dkim_results
-GROUP BY domain, selector, result
-ORDER BY domain, occurrences DESC;
+-- Resumen SPF y DKIM por dominio (todos los datos)
+SELECT
+    r.domain,
+    SUM(rr.count)                                                          AS total_emails,
+    SUM(CASE WHEN rr.spf_result  = 'pass' THEN rr.count ELSE 0 END)       AS spf_pass,
+    SUM(CASE WHEN rr.spf_result  = 'fail' THEN rr.count ELSE 0 END)       AS spf_fail,
+    SUM(CASE WHEN rr.spf_result  = 'none' THEN rr.count ELSE 0 END)       AS spf_none,
+    SUM(CASE WHEN rr.dkim_result = 'pass' THEN rr.count ELSE 0 END)       AS dkim_pass,
+    SUM(CASE WHEN rr.dkim_result = 'fail' THEN rr.count ELSE 0 END)       AS dkim_fail,
+    ROUND(100.0 * SUM(CASE WHEN rr.spf_result  = 'pass' THEN rr.count ELSE 0 END)
+        / NULLIF(SUM(rr.count), 0), 1)                                     AS spf_pass_pct,
+    ROUND(100.0 * SUM(CASE WHEN rr.dkim_result = 'pass' THEN rr.count ELSE 0 END)
+        / NULLIF(SUM(rr.count), 0), 1)                                     AS dkim_pass_pct
+FROM dmarc_reports r
+JOIN dmarc_report_records rr ON rr.report_id = r.id
+GROUP BY r.domain
+ORDER BY total_emails DESC;
 
--- SPF domains que fallan
-SELECT DISTINCT
-    dr.domain,
-    dsr.domain as spf_domain,
-    dsr.result,
-    COUNT(*) as failures
-FROM dmarc_reports dr
-JOIN dmarc_spf_results dsr ON dr.id = dsr.report_id
-WHERE dsr.result = 'fail'
-GROUP BY dr.domain, dsr.domain, dsr.result
-ORDER BY failures DESC;
+-- Detalle de DKIM por selector (qué selectores están pasando o fallando)
+SELECT
+    d.domain      AS dkim_domain,
+    d.selector,
+    d.result,
+    COUNT(*)      AS ocurrencias
+FROM dmarc_dkim_results d
+GROUP BY d.domain, d.selector, d.result
+ORDER BY d.domain, ocurrencias DESC;
 
--- ========== ALERTAS ==========
+-- Dominios SPF que fallan (qué envelope sender está rompiendo)
+SELECT
+    r.domain                       AS dominio_dmarc,
+    s.domain                       AS envelope_sender,
+    s.result,
+    COUNT(*)                       AS ocurrencias,
+    SUM(rr.count)                  AS emails_afectados
+FROM dmarc_report_records rr
+JOIN dmarc_reports r          ON r.id  = rr.report_id
+JOIN dmarc_spf_results s      ON s.record_id = rr.id
+WHERE s.result IN ('fail', 'none', 'softfail')
+GROUP BY r.domain, s.domain, s.result
+ORDER BY emails_afectados DESC;
 
--- Todas las alertas sin reconocer
-SELECT 
-    id,
+-- Tendencia diaria SPF/DKIM (últimos 30 días)
+SELECT
+    to_timestamp(r.date_begin)::date AS dia,
+    r.domain,
+    SUM(rr.count)                    AS total_emails,
+    ROUND(100.0 * SUM(CASE WHEN rr.spf_result  = 'pass' THEN rr.count ELSE 0 END)
+        / NULLIF(SUM(rr.count), 0), 1) AS spf_pass_pct,
+    ROUND(100.0 * SUM(CASE WHEN rr.dkim_result = 'pass' THEN rr.count ELSE 0 END)
+        / NULLIF(SUM(rr.count), 0), 1) AS dkim_pass_pct
+FROM dmarc_reports r
+JOIN dmarc_report_records rr ON rr.report_id = r.id
+WHERE r.date_begin > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')::bigint
+GROUP BY dia, r.domain
+ORDER BY dia DESC, r.domain;
+
+
+-- ========== 3. IPs ORIGEN ==========
+
+-- Todas las IPs únicas con su resultado SPF/DKIM
+SELECT
+    rr.source_ip::text,
+    r.domain,
+    SUM(rr.count)                    AS emails,
+    rr.spf_result,
+    rr.dkim_result,
+    rr.disposition,
+    MAX(to_timestamp(r.date_begin))  AS ultimo_reporte
+FROM dmarc_report_records rr
+JOIN dmarc_reports r ON r.id = rr.report_id
+GROUP BY rr.source_ip, r.domain, rr.spf_result, rr.dkim_result, rr.disposition
+ORDER BY emails DESC;
+
+-- IPs con fallos SPF (posibles problemas de configuración o spoofing)
+SELECT
+    rr.source_ip::text,
+    r.domain,
+    SUM(rr.count) AS emails_fallidos,
+    COUNT(DISTINCT r.id) AS en_cuantos_reportes
+FROM dmarc_report_records rr
+JOIN dmarc_reports r ON r.id = rr.report_id
+WHERE rr.spf_result = 'fail'
+GROUP BY rr.source_ip, r.domain
+ORDER BY emails_fallidos DESC;
+
+-- IPs en quarantine o reject
+SELECT
+    rr.source_ip::text,
+    rr.disposition,
+    SUM(rr.count) AS emails_bloqueados,
+    r.domain
+FROM dmarc_report_records rr
+JOIN dmarc_reports r ON r.id = rr.report_id
+WHERE rr.disposition IN ('quarantine', 'reject')
+GROUP BY rr.source_ip, rr.disposition, r.domain
+ORDER BY emails_bloqueados DESC;
+
+
+-- ========== 4. ALERTAS ==========
+
+-- Alertas activas (sin reconocer)
+SELECT
+    a.id,
+    a.severity,
+    a.alert_type,
+    a.message,
+    rr.source_ip::text,
+    r.domain,
+    a.created_at
+FROM dmarc_alerts a
+JOIN dmarc_report_records rr ON rr.id = a.record_id
+JOIN dmarc_reports r          ON r.id = rr.report_id
+WHERE a.acknowledged = FALSE
+ORDER BY
+    CASE a.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+    a.created_at DESC;
+
+-- Resumen de alertas por tipo y severidad
+SELECT
     alert_type,
     severity,
-    message,
-    created_at,
-    (SELECT COUNT(*) FROM dmarc_alerts WHERE severity = 'critical' AND acknowledged = FALSE) as critical_count
-FROM dmarc_alerts
-WHERE acknowledged = FALSE
-ORDER BY severity DESC, created_at DESC;
-
--- Distribuci'on de alertas por tipo
-SELECT 
-    alert_type,
-    severity,
-    COUNT(*) as total,
-    COUNT(CASE WHEN acknowledged = FALSE THEN 1 END) as unacknowledged
+    COUNT(*)                                              AS total,
+    COUNT(*) FILTER (WHERE acknowledged = FALSE)          AS sin_reconocer
 FROM dmarc_alerts
 GROUP BY alert_type, severity
-ORDER BY total DESC;
+ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END;
 
--- Alertas por dominio
-SELECT 
-    dr.domain,
-    da.severity,
-    COUNT(*) as alert_count
-FROM dmarc_alerts da
-JOIN dmarc_reports dr ON da.report_id = dr.id
-WHERE da.acknowledged = FALSE
-GROUP BY dr.domain, da.severity
-ORDER BY dr.domain, 
-    CASE da.severity 
-        WHEN 'critical' THEN 1 
-        WHEN 'high' THEN 2 
-        WHEN 'medium' THEN 3 
-        ELSE 4 
-    END;
+-- Reconocer una alerta manualmente (reemplazar N por el id)
+-- UPDATE dmarc_alerts SET acknowledged = TRUE WHERE id = N;
 
--- ========== IPs PROBLEMÁTICAS ==========
+-- Reconocer todas las alertas de un dominio
+-- UPDATE dmarc_alerts a
+-- SET acknowledged = TRUE
+-- FROM dmarc_report_records rr
+-- JOIN dmarc_reports r ON r.id = rr.report_id
+-- WHERE a.record_id = rr.id AND r.domain = 'tudominio.com';
 
--- IPs con más SPF failures
-SELECT 
-    source_ip,
-    domain,
-    COUNT(*) as fail_count,
-    SUM(count) as total_emails
-FROM dmarc_reports
-WHERE spf_result = 'fail'
-GROUP BY source_ip, domain
-ORDER BY fail_count DESC
-LIMIT 20;
 
--- IPs bloqueadas por policy
-SELECT 
-    source_ip,
-    disposition,
-    COUNT(*) as occurrences,
-    SUM(count) as total_emails,
-    STRING_AGG(DISTINCT domain, ', ') as domains
-FROM dmarc_reports
-WHERE disposition IN ('quarantine', 'reject')
-GROUP BY source_ip, disposition
-ORDER BY occurrences DESC;
+-- ========== 5. POLÍTICA DMARC ==========
 
--- ========== TRENDS TEMPORALES ==========
-
--- SPF/DKIM trends últimos 30 días
-SELECT 
-    to_timestamp(date_begin)::date as date,
-    domain,
-    COUNT(*) as reports,
-    SUM(count) as total_emails,
-    ROUND(100.0 * SUM(CASE WHEN spf_result = 'pass' THEN count ELSE 0 END) / 
-        NULLIF(SUM(count), 0), 2) as spf_pass_pct,
-    ROUND(100.0 * SUM(CASE WHEN dkim_result = 'pass' THEN count ELSE 0 END) / 
-        NULLIF(SUM(count), 0), 2) as dkim_pass_pct
-FROM dmarc_reports
-WHERE date_begin > EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')::bigint
-GROUP BY to_timestamp(date_begin)::date, domain
-ORDER BY date DESC, domain;
-
--- Emails procesados por hora (últimas 24h)
-SELECT 
-    to_timestamp(date_begin)::date || ' ' || 
-    LPAD(EXTRACT(HOUR FROM to_timestamp(date_begin))::text, 2, '0') || ':00' as hour,
-    domain,
-    SUM(count) as emails,
-    SUM(CASE WHEN spf_result = 'fail' THEN count ELSE 0 END) as spf_fails,
-    SUM(CASE WHEN dkim_result = 'fail' THEN count ELSE 0 END) as dkim_fails
-FROM dmarc_reports
-WHERE date_begin > EXTRACT(EPOCH FROM NOW() - INTERVAL '1 day')::bigint
-GROUP BY hour, domain
-ORDER BY hour DESC;
-
--- ========== AUDITORÍA ==========
-
--- Reportes duplicados (mismo report_id)
-SELECT 
-    report_id,
-    COUNT(*) as occurrences,
-    STRING_AGG(id::text, ', ') as ids
-FROM dmarc_reports
-GROUP BY report_id
-HAVING COUNT(*) > 1;
-
--- Reportes insertados hoy
-SELECT 
-    domain,
-    COUNT(*) as report_count,
-    MIN(created_at) as first_inserted,
-    MAX(created_at) as last_inserted
-FROM dmarc_reports
-WHERE created_at::date = CURRENT_DATE
-GROUP BY domain
-ORDER BY last_inserted DESC;
-
--- Historial de cambios de policy
+-- Historial de políticas vistas (detecta si alguien cambió p= o pct=)
 SELECT DISTINCT
     domain,
     policy_p,
     policy_adkim,
     policy_aspf,
     policy_pct,
-    MIN(to_timestamp(date_begin)) as first_seen,
-    MAX(to_timestamp(date_begin)) as last_seen
+    MIN(to_timestamp(date_begin)) AS primera_vez,
+    MAX(to_timestamp(date_begin)) AS ultima_vez
 FROM dmarc_reports
 GROUP BY domain, policy_p, policy_adkim, policy_aspf, policy_pct
-ORDER BY domain, last_seen DESC;
+ORDER BY domain, ultima_vez DESC;
 
--- ========== PERFORMANCE ==========
 
--- Tabla más grande
-SELECT 
-    schemaname,
+-- ========== 6. DNS CONFIG (tablas nuevas) ==========
+
+-- Ver configuración guardada del dominio
+SELECT
+    domain,
+    dns_provider,
+    email_stack,
+    dkim_selectors,
+    spf_record,
+    dmarc_record,
+    extra_notes,
+    updated_at
+FROM dns_setup
+ORDER BY domain;
+
+-- Ver todos los registros DNS documentados
+SELECT
+    record_type,
+    host,
+    value,
+    ttl,
+    notes
+FROM dns_records
+WHERE domain = 'tudominio.com'   -- cambiar por tu dominio
+ORDER BY record_type, host;
+
+-- Registros TXT (SPF, DMARC, DKIM, verificaciones)
+SELECT host, value, notes
+FROM dns_records
+WHERE domain = 'tudominio.com' AND record_type = 'TXT'
+ORDER BY host;
+
+-- Registros MX
+SELECT host, value, ttl, notes
+FROM dns_records
+WHERE domain = 'tudominio.com' AND record_type = 'MX'
+ORDER BY host;
+
+
+-- ========== 7. AUDITORÍA Y MANTENIMIENTO ==========
+
+-- Reportes cargados hoy
+SELECT
+    domain,
+    COUNT(*)         AS xmls,
+    MIN(created_at)  AS primer_upload,
+    MAX(created_at)  AS ultimo_upload
+FROM dmarc_reports
+WHERE created_at::date = CURRENT_DATE
+GROUP BY domain;
+
+-- Detectar duplicados (no debería haber — el ON CONFLICT los bloquea)
+SELECT report_id, COUNT(*) AS veces
+FROM dmarc_reports
+GROUP BY report_id
+HAVING COUNT(*) > 1;
+
+-- Tamaño de cada tabla
+SELECT
     tablename,
-    ROUND(pg_total_relation_size(schemaname||'.'||tablename) / 1024 / 1024, 2) as size_mb
+    pg_size_pretty(pg_total_relation_size('public.' || tablename)) AS tamaño
 FROM pg_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+ORDER BY pg_total_relation_size('public.' || tablename) DESC;
 
--- Índices no usados
-SELECT 
-    schemaname,
-    tablename,
-    indexname,
-    idx_scan as index_scans,
-    idx_tup_read as tuples_read,
-    idx_tup_fetch as tuples_fetched
-FROM pg_stat_user_indexes
-WHERE schemaname = 'public'
-ORDER BY idx_scan ASC;
+-- Limpiar alertas reconocidas con más de 90 días
+-- DELETE FROM dmarc_alerts
+-- WHERE acknowledged = TRUE AND created_at < NOW() - INTERVAL '90 days';
 
--- ========== MANTENIMIENTO ==========
-
--- Vacuum analyze (liberar espacio)
-VACUUM ANALYZE;
-
--- Contar registros
-SELECT 
-    'dmarc_reports' as table_name,
-    COUNT(*) as rows
-FROM dmarc_reports
-UNION ALL
-SELECT 'dmarc_alerts', COUNT(*) FROM dmarc_alerts
-UNION ALL
-SELECT 'dmarc_dkim_results', COUNT(*) FROM dmarc_dkim_results
-UNION ALL
-SELECT 'dmarc_spf_results', COUNT(*) FROM dmarc_spf_results;
-
--- ========== EXPORTAR DATOS ==========
-
--- Exportar a CSV (ejecutar desde bash)
--- COPY (
---   SELECT * FROM dmarc_reports WHERE domain = 'yourdomain.com'
+-- Exportar records a CSV (desde psql)
+-- \COPY (
+--   SELECT r.domain, to_timestamp(r.date_begin)::date, rr.source_ip, rr.count, rr.spf_result, rr.dkim_result
+--   FROM dmarc_report_records rr JOIN dmarc_reports r ON r.id = rr.report_id
+--   WHERE r.domain = 'tudominio.com'
 -- ) TO '/tmp/dmarc_export.csv' WITH CSV HEADER;
-
--- Limpiar alertas antiguas (>90 días)
-DELETE FROM dmarc_alerts
-WHERE created_at < NOW() - INTERVAL '90 days';
-
--- Limpiar reportes muy antiguos (>180 días)
--- DELETE FROM dmarc_reports
--- WHERE date_begin < EXTRACT(EPOCH FROM NOW() - INTERVAL '180 days')::bigint;
-
--- ========== DASHBOARD DATA ==========
-
--- Query lista para dashboards
-SELECT 
-    domain,
-    COUNT(*) as total_reports,
-    SUM(count) as total_emails,
-    ROUND(100.0 * SUM(CASE WHEN spf_result = 'pass' THEN count ELSE 0 END) / 
-        NULLIF(SUM(count), 0), 2) as spf_pass_pct,
-    ROUND(100.0 * SUM(CASE WHEN dkim_result = 'pass' THEN count ELSE 0 END) / 
-        NULLIF(SUM(count), 0), 2) as dkim_pass_pct,
-    SUM(CASE WHEN disposition = 'none' THEN count ELSE 0 END) as accepted_emails,
-    SUM(CASE WHEN disposition = 'quarantine' THEN count ELSE 0 END) as quarantined_emails,
-    SUM(CASE WHEN disposition = 'reject' THEN count ELSE 0 END) as rejected_emails
-FROM dmarc_reports
-WHERE date_begin > EXTRACT(EPOCH FROM NOW() - INTERVAL '7 days')::bigint
-GROUP BY domain
-ORDER BY total_emails DESC;
